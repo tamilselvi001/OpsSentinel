@@ -1,0 +1,4 @@
+# Alert simulator runtime deps (publishes normalized events via lib.pubsub).
+google-cloud-pubsub>=2.21
+google-cloud-secret-manager>=2.20
+pydantic>=2.6

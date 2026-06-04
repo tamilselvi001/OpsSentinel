@@ -1,0 +1,6 @@
+# Runtime deps for the webhook receiver (kept minimal — it only normalizes + publishes).
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+google-cloud-pubsub>=2.21
+google-cloud-secret-manager>=2.20

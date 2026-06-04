@@ -1,0 +1,123 @@
+# Local development stack — mirrors the GCP topology with emulators. Development/test convenience
+# only; the Terraform under infra/ remains the authoritative cloud deployment target.
+
+services:
+  # Pub/Sub emulator — stands in for the Queue Layer.
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    command: >
+      gcloud beta emulators pubsub start
+      --host-port=0.0.0.0:8085
+      --project=opssentinel-mvp
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8085 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Local PostgreSQL — mirrors the Cloud SQL incident store.
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: opssentinel
+      POSTGRES_PASSWORD: opssentinel
+      POSTGRES_DB: opssentinel
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opssentinel"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The Phase-1 Cloud Run workload, running locally against the emulator.
+  webhook-receiver:
+    build:
+      context: .
+      dockerfile: services/webhook-receiver/Dockerfile
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: opssentinel-mvp
+      GOOGLE_CLOUD_PROJECT: opssentinel-mvp
+      OPSSENTINEL_USE_SECRET_MANAGER: "false"
+      OPSSENTINEL_ALERTS_TOPIC: opssentinel-alerts
+      PORT: "8080"
+    ports:
+      - "8000:8080" # host 8000 (MCP servers take the canonical 8080/8081)
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+
+  # Elasticsearch — semantic memory + raw log intake (Phase 2).
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Arize Phoenix — trace collector + self-evaluation (Phase 2).
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"
+
+  # Elastic MCP server (SSE /sse).
+  mcp-elastic:
+    build:
+      context: .
+      dockerfile: services/mcp-elastic/Dockerfile
+    environment:
+      OPSSENTINEL_USE_SECRET_MANAGER: "false"
+      ELASTIC_URL: http://elasticsearch:9200
+    ports:
+      - "8080:8080"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # Arize Phoenix MCP server (SSE /sse).
+  mcp-arize:
+    build:
+      context: .
+      dockerfile: services/mcp-arize/Dockerfile
+    environment:
+      OPSSENTINEL_USE_SECRET_MANAGER: "false"
+      DATABASE_URL: postgresql+psycopg://opssentinel:opssentinel@postgres:5432/opssentinel
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      phoenix:
+        condition: service_started
+
+  # Alert simulator — emits one signal on start; use `make storm` for the storm.
+  alert-simulator:
+    build:
+      context: .
+      dockerfile: services/alert-simulator/Dockerfile
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: opssentinel-mvp
+      GOOGLE_CLOUD_PROJECT: opssentinel-mvp
+      OPSSENTINEL_USE_SECRET_MANAGER: "false"
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  pgdata: {}

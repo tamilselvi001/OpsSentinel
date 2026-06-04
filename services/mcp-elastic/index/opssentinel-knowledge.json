@@ -1,0 +1,28 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "properties": {
+      "title": { "type": "text" },
+      "summary": { "type": "text" },
+      "root_cause": { "type": "text" },
+      "resolution_steps": { "type": "text" },
+      "commands": { "type": "keyword" },
+      "service": { "type": "keyword" },
+      "category": { "type": "keyword" },
+      "tags": { "type": "keyword" },
+      "environment": { "type": "keyword" },
+      "who_handled": { "type": "keyword" },
+      "time_to_fix": { "type": "keyword" },
+      "resolved_at": { "type": "date" },
+      "embedding": {
+        "type": "dense_vector",
+        "dims": 384,
+        "index": true,
+        "similarity": "cosine"
+      }
+    }
+  }
+}

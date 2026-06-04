@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1
+  },
+  "mappings": {
+    "properties": {
+      "service": { "type": "keyword" },
+      "timestamp": { "type": "date" },
+      "level": { "type": "keyword" },
+      "message": { "type": "text" },
+      "labels": { "type": "object", "enabled": true }
+    }
+  }
+}

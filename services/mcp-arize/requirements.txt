@@ -1,0 +1,8 @@
+# Arize Phoenix MCP server runtime deps.
+mcp>=1.2.0
+starlette>=0.37
+uvicorn[standard]>=0.29
+SQLAlchemy>=2.0
+psycopg[binary]>=3.1
+pydantic>=2.6
+google-cloud-secret-manager>=2.20

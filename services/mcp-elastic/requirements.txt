@@ -1,0 +1,8 @@
+# Elastic MCP server runtime deps.
+mcp>=1.2.0
+starlette>=0.37
+uvicorn[standard]>=0.29
+elasticsearch>=8.13,<9
+sentence-transformers>=2.7
+pydantic>=2.6
+google-cloud-secret-manager>=2.20
