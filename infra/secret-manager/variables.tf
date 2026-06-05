@@ -16,5 +16,6 @@ variable "secret_names" {
     "slack-signing-secret",
     "google-oauth-client-id",
     "database-url",
+    "session-secret",
   ]
 }

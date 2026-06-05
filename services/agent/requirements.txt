@@ -1,0 +1,13 @@
+# Agent (ADK orchestrator) runtime deps. Some are used by later Phase-3 checkpoints
+# (graph/Gemini/MCP/tracing); pinned best-effort and documented in the service README.
+google-adk>=0.3
+google-genai>=0.3
+mcp>=1.2.0
+google-cloud-pubsub>=2.21
+google-cloud-secret-manager>=2.20
+SQLAlchemy>=2.0
+psycopg[binary]>=3.1
+pydantic>=2.6
+openinference-instrumentation-google-adk>=0.1
+opentelemetry-sdk>=1.24
+opentelemetry-exporter-otlp-proto-http>=1.24

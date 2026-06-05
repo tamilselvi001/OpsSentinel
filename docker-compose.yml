@@ -119,5 +119,74 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # ADK agent — the reasoning brain (Phase 3). Pulls from the queue and drives the graph.
+  agent:
+    build:
+      context: .
+      dockerfile: services/agent/Dockerfile
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: opssentinel-mvp
+      GOOGLE_CLOUD_PROJECT: opssentinel-mvp
+      OPSSENTINEL_USE_SECRET_MANAGER: "false"
+      OPSSENTINEL_ALERTS_SUB: opssentinel-alerts-sub
+      OPSSENTINEL_ACTIONS_TOPIC: opssentinel-actions
+      DATABASE_URL: postgresql+psycopg://opssentinel:opssentinel@postgres:5432/opssentinel
+      MCP_ELASTIC_URL: http://mcp-elastic:8080/sse
+      MCP_ARIZE_URL: http://mcp-arize:8081/sse
+      PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      SLACK_NOTIFY_URL: http://slack-bot:8080/notify
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mcp-elastic:
+        condition: service_started
+      mcp-arize:
+        condition: service_started
+
+  # Slack HITL approval gate (Phase 5). The agent posts briefs here; Approve drives the executor.
+  slack-bot:
+    build:
+      context: .
+      dockerfile: services/slack-bot/Dockerfile
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      PUBSUB_PROJECT_ID: opssentinel-mvp
+      GOOGLE_CLOUD_PROJECT: opssentinel-mvp
+      OPSSENTINEL_USE_SECRET_MANAGER: "false"
+      OPSSENTINEL_ACTIONS_TOPIC: opssentinel-actions
+      DATABASE_URL: postgresql+psycopg://opssentinel:opssentinel@postgres:5432/opssentinel
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-xoxb-changeme}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-changeme}
+      SLACK_CHANNEL: ${SLACK_CHANNEL:-#opssentinel}
+      DASHBOARD_BASE_URL: http://localhost:3000
+    ports:
+      - "8083:8080"
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Next.js dashboard (mock data mode by default — no live agent needed for the UI/auth demo).
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      OPSSENTINEL_DATA_MODE: mock
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-changeme.apps.googleusercontent.com}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-session-secret-change-me}
+      DATABASE_URL: postgresql://opssentinel:opssentinel@postgres:5432/opssentinel
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata: {}

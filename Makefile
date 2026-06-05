@@ -5,7 +5,7 @@
 PY ?= python
 COMPOSE ?= docker compose
 
-.PHONY: dev down migrate seed seed-demo publish-test signal storm validate-phase2 build fmt lint test help
+.PHONY: dev down migrate seed seed-demo publish-test signal storm validate-phase2 validate approve reject build fmt lint test help
 
 # Bring up the local stack (emulator + Postgres + Elasticsearch + Phoenix + MCP servers + sim).
 dev:
@@ -44,6 +44,18 @@ storm:
 # Validate Phase-2 semantic search + observability tools against the seeded data.
 validate-phase2:
 	$(PY) scripts/validate_phase2.py
+
+# Phase-5 Exit-Criteria validation: publish a 50+ alert storm, reconcile, assert the DLQ is empty.
+validate:
+	PYTHONPATH=.:services/alert-simulator PUBSUB_EMULATOR_HOST=localhost:8085 $(PY) scripts/run_storm.py
+
+# Approve an incident (test shim for Phase-5 Slack approval). Usage: make approve INCIDENT=<id>
+approve:
+	PYTHONPATH=. PUBSUB_EMULATOR_HOST=localhost:8085 $(PY) scripts/approve.py --incident $(INCIDENT)
+
+# Reject an incident. Usage: make reject INCIDENT=<id>
+reject:
+	PYTHONPATH=. PUBSUB_EMULATOR_HOST=localhost:8085 $(PY) scripts/approve.py --incident $(INCIDENT) --reject
 
 # Build the webhook-receiver container (build context = repo root).
 build:

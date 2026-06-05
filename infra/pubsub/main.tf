@@ -20,6 +20,23 @@ resource "google_pubsub_topic" "actions" {
   name = var.actions_topic
 }
 
+# The agent's execution consumer (Phase 3, node 9) pulls approvals from this subscription.
+resource "google_pubsub_subscription" "actions_agent_sub" {
+  name                       = "${var.actions_topic}-agent-sub"
+  topic                      = google_pubsub_topic.actions.id
+  ack_deadline_seconds       = 60
+  message_retention_duration = "604800s"
+
+  expiration_policy {
+    ttl = ""
+  }
+
+  retry_policy {
+    minimum_backoff = "10s"
+    maximum_backoff = "600s"
+  }
+}
+
 # ── Agent pull subscription (AP-tuned: zero loss + back-pressure) ─────────────
 resource "google_pubsub_subscription" "alerts_sub" {
   name  = var.alerts_subscription

@@ -9,11 +9,11 @@ any service account.
 | Service account | Custom role | Permissions | Granted in |
 |---|---|---|---|
 | `sa-webhook-receiver` | `opssentinelWebhookPublisher` | `pubsub.topics.publish`, `pubsub.topics.get` | Phase 1 |
-| `sa-agent` | `opssentinelAgentRuntime` | `pubsub.subscriptions.consume/get`, `pubsub.topics.publish`, `cloudsql.instances.connect/get`, `secretmanager.versions.access` | Phase 1 |
+| `sa-agent` | `opssentinelAgentRuntime` + per-secret `secretAccessor` (`gemini-api-key`, `database-url`, `elastic-*`, `phoenix-*`) | Pub/Sub subscribe + publish-to-actions, Cloud SQL connect, read its 6 secrets | Phase 1 + Phase 3 (`phase3.tf`) |
 | `sa-mcp-elastic` | per-secret `secretAccessor` (`elastic-url`, `elastic-api-key`) | read only its 2 secrets | Phase 2 (`phase2.tf`) |
 | `sa-mcp-arize` | `secretAccessor` (`phoenix-*`, `database-url`) + `opssentinelMcpArizeRuntime` | read its secrets + Cloud SQL connect | Phase 2 (`phase2.tf`) |
 | `sa-alert-simulator` | `opssentinelWebhookPublisher` | Pub/Sub publish only | Phase 2 (`phase2.tf`) |
-| `sa-slack-bot` | — (narrow roles attached in Phase 5) | per-secret `secretAccessor`, `pubsub.topics.publish` | Phase 5 |
+| `sa-slack-bot` | `opssentinelSlackBotRuntime` + per-secret `secretAccessor` (`slack-*`, `database-url`) | publish to actions + Cloud SQL connect + read its 3 secrets | Phase 5 (`phase5.tf`) |
 | `sa-frontend-backend` | — (narrow roles attached in Phase 4) | `cloudsql.instances.connect`, per-secret `secretAccessor` | Phase 4 |
 | `sa-scheduler` | — (invoker role attached in Phase 1 scheduler) | `run.invoker` / `pubsub.publisher` on the cap/SLA topics | Phase 1 (`infra/scheduler`) |
 

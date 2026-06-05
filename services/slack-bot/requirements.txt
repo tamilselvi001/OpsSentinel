@@ -1,0 +1,9 @@
+# Slack bot runtime deps.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+slack-sdk>=3.27
+google-cloud-pubsub>=2.21
+google-cloud-secret-manager>=2.20
+SQLAlchemy>=2.0
+psycopg[binary]>=3.1
+pydantic>=2.6

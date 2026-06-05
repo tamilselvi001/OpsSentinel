@@ -10,10 +10,12 @@ This repository is built in **five sequential phases**, each owned by a team mem
 prompts live in [`PROMPTS/`](PROMPTS) and are run **in order** with Claude Code — paste one
 phase file as a message, review the diff, run its acceptance checks, then continue.
 
-> **Status:** Phases 1–2 implemented. All pure logic verified locally (ruff + 37 tests green);
-> IaC, services, MCP servers, migrations, seeds, and the local harness authored. Cloud-tool
-> acceptance checks (Terraform/Docker/gcloud/Elasticsearch/Phoenix/Postgres) run where those tools
-> are installed (see the acceptance matrices at the bottom of this file). Phase 3 not started.
+> **Status:** All 5 phases implemented. Backend deterministic logic verified locally
+> (ruff + **88 tests** green) and the **Next.js dashboard builds green** (`npm run build`, standalone).
+> All services, MCP servers, the ADK agent, the Slack HITL gate, the dashboard, IaC, and the
+> end-to-end storm validation are authored. Cloud-tool acceptance checks (Terraform/Docker/gcloud/
+> Elasticsearch/Phoenix/Postgres/Gemini/Slack) run where those tools are installed — see the
+> per-phase acceptance matrices below and [`docs/DEMO.md`](docs/DEMO.md) for the end-to-end walkthrough.
 
 ## Build phases
 
@@ -22,9 +24,9 @@ phase file as a message, review the diff, run its acceptance checks, then contin
 | 0 | Project bootstrap | — | — | this README |
 | 1 | Infrastructure & Orchestration Foundation ✅ | Cloud Infra & Backend Lead | — | [01](PROMPTS/01-phase1-infrastructure-foundation.md) |
 | 2 | Data Sources, Memory & MCP Servers ✅ | Integrations, Memory & Observability | Phase 1 | [02](PROMPTS/02-phase2-data-sources-and-mcp.md) |
-| 3 | Core ADK Agent (reasoning brain) | AI & Agent Orchestration | Phase 2 | [03](PROMPTS/03-phase3-adk-agent-core.md) |
-| 4 | Frontend Dashboard & Security | Frontend & Security | scaffold anytime; finalize after P3 | [04](PROMPTS/04-phase4-frontend-and-security.md) |
-| 5 | Workflow Integration & Validation | All members | Phases 1–4 | [05](PROMPTS/05-phase5-integration-and-validation.md) |
+| 3 | Core ADK Agent (reasoning brain) ✅ | AI & Agent Orchestration | Phase 2 | [03](PROMPTS/03-phase3-adk-agent-core.md) |
+| 4 | Frontend Dashboard & Security ✅ | Frontend & Security | scaffold anytime; finalize after P3 | [04](PROMPTS/04-phase4-frontend-and-security.md) |
+| 5 | Workflow Integration & Validation ✅ | All members | Phases 1–4 | [05](PROMPTS/05-phase5-integration-and-validation.md) |
 
 Conventions, shared contracts, and scope are defined in
 [`PROMPTS/00-README-and-build-conventions.md`](PROMPTS/00-README-and-build-conventions.md).
@@ -141,4 +143,80 @@ make storm             # 50+ correlated signals (Phase-5 dedup input)
 | MCP servers serve `/sse` + `/health`, non-root | `make dev` / `terraform validate` | ⏳ needs Docker |
 | Arize tools against seeded `agent_outcomes` | `make validate-phase2` | ⏳ needs Postgres |
 | Per-secret IAM, no Editor; secrets via accessor | `infra/iam`, `infra/cloud-run/mcp.tf` | ✅ by construction |
+
+## Phase 3 — the ADK agent (reasoning brain)
+
+A single generalized orchestrator in [`services/agent/`](services/agent/). The **ADK graph** keeps
+deterministic nodes off the LLM and invokes **Gemini 2.0 Flash** only for classification and the
+RAG-bound recommendation; it correlates a storm into one incident, grounds its proposal in retrieved
+runbooks, sets an `autonomy_tier` from Arize, applies a deterministic **Policy Engine**, and produces
+an execution brief that awaits human approval before a **mocked** remediation.
+
+```bash
+make dev                        # now also runs the agent (alert + execution consumers)
+make storm                      # 50+ correlated signals -> one incident -> awaiting_approval
+make approve INCIDENT=<id>      # drive the deterministic execution path -> resolved
+make reject  INCIDENT=<id>      # -> rejected
+```
+
+| Check | How | Status here |
+|---|---|---|
+| Storm folds into one incident (correlation) | `pytest tests/test_correlation.py` | ✅ verified |
+| Policy gates (high-risk/schema/destructive/low-autonomy) + SLA escalation | `pytest tests/test_policy.py` | ✅ verified |
+| Adaptive autonomy (high/moderate/low, degrade, novel) | `pytest tests/test_autonomy.py` | ✅ verified |
+| Brief assembles all decision sections | `pytest tests/test_brief.py` | ✅ verified |
+| Graph e2e → `awaiting_approval` (autonomy, risk, runbook, trace_id, branches) | `pytest tests/test_graph.py` | ✅ verified |
+| Execution path: approve→resolved+closure+outcome, reject, idempotent | `pytest tests/test_executor.py` `tests/test_mock_infra.py` | ✅ verified |
+| Gemini classification + RAG-bound recommendation | live run | ⏳ needs Gemini key |
+| MCP tools callable over SSE via the agent | live run | ⏳ needs MCP servers |
+| OpenInference trace per run in Phoenix; `trace_id` persisted | live run | ⏳ needs Phoenix |
+| Agent Cloud Run deploy validates; least-privilege IAM (no Editor) | `terraform validate`; `infra/cloud-run/agent.tf`, `infra/iam` | ⏳ needs Terraform |
+
+## Phase 4 — dashboard & security
+
+A **Next.js 16 App Router** console in [`frontend/`](frontend/): server-rendered incident state +
+reliability telemetry, **Google Identity Services** auth (server-side token verification, `sub`-keyed
+httpOnly session, role separation), and a multi-stage **Alpine / standalone / non-root** image behind
+the Phase-1 **Serverless NEG + L7 LB + Cloud CDN**. Read-only — it never mutates incident state.
+
+```bash
+cd frontend && npm install && npm run build   # standalone output for the Alpine image
+make dev                                        # runs the dashboard (mock mode) at http://localhost:3000
+```
+
+| Check | How | Status here |
+|---|---|---|
+| App builds; standalone output enabled | `npm run build` → `.next/standalone/server.js` | ✅ verified |
+| TypeScript types compile (read-model, auth, data) | `npm run build` (tsc) | ✅ verified |
+| 4 views render server-side; loading/error boundaries | route segments + `error.tsx`/`loading.tsx` | ✅ builds (SSR routes are `ƒ`) |
+| Google token verified server-side; `sub`-keyed httpOnly session; role separation | `lib/auth/*`, `app/api/auth` | ✅ by construction |
+| Server-side guard blocks unauthenticated routes | `app/(dashboard)/layout.tsx` | ✅ by construction |
+| Multi-stage Alpine, standalone, non-root image | `docker build ./frontend` | ⏳ needs Docker |
+| Cloud Run + NEG/L7 LB/CDN attach; least-privilege IAM | `terraform validate`; `infra/cloud-run/frontend.tf`, `infra/networking`, `infra/iam/phase4.tf` | ⏳ needs Terraform |
+| Live SSR reads real agent incidents + Phoenix deep-link | `OPSSENTINEL_DATA_MODE=live` | ⏳ needs Postgres + agent |
+
+## Phase 5 — integration & validation
+
+Connects the work-streams into one workflow: the **Slack HITL gate** ([`services/slack-bot/`](services/slack-bot/)) —
+signature-verified, plain-text brief, Approve/Reject → `opssentinel-actions` → the Phase-3 executor;
+the agent wired to `/notify` (`Notifier` on the graph); the **alert-storm validation**
+([`scripts/run_storm.py`](scripts/run_storm.py), `make validate`); and the end-to-end demo
+([`docs/DEMO.md`](docs/DEMO.md)). No new schemas/topics — only wiring.
+
+```bash
+make dev && make migrate && make seed
+make validate                      # 50+ signal storm → reconcile → assert DLQ empty
+make approve INCIDENT=<id>         # drive the executor without live Slack
+```
+
+| Exit Criterion / check | How | Status here |
+|---|---|---|
+| **EC1** Storm → one incident, zero alert loss | `pytest tests/test_storm_dedup.py`; `make validate` | ✅ verified (logic); ⏳ live reconcile |
+| Slack signature verification (anti-spoof) | `pytest tests/test_slack_signing.py` | ✅ verified |
+| Plain-text brief + Approve/Reject buttons (value=incident_id) | `pytest tests/test_slack_brief.py` | ✅ verified |
+| Approve→publish actions; Reject→rejected; both audited | `pytest tests/test_slack_actions.py` | ✅ verified |
+| **EC2** retrieve→self-eval→propose→Slack→Approve→execute | `tests/test_graph.py` + `test_executor.py` + `test_slack_*` | ✅ verified (logic) |
+| Agent → slack-bot `/notify` wiring | `Notifier` in graph; `SlackNotifier` in runtime | ✅ by construction |
+| **EC3** OpenInference traces + secured exception-free SSR frontend | Phoenix UI + `npm run build` | ⏳ needs Phoenix; ✅ build green |
+| slack-bot deploy validates; least-privilege IAM (no Editor) | `terraform validate`; `infra/cloud-run/slack-bot.tf`, `infra/iam/phase5.tf` | ⏳ needs Terraform |
 
