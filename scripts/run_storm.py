@@ -46,7 +46,7 @@ def _reconcile(expected_min: int) -> None:
                     f"FROM incidents WHERE {window}"
                 )
             ).scalar_one()
-        print(f"incidents (last 10m): {incidents}  |  events folded into one incident: {max_events}")
+        print(f"incidents (last 10m): {incidents}  |  events folded in: {max_events}")
         assert incidents >= 1, "expected at least one incident from the storm"
         assert max_events >= expected_min, "fewer folded events than published — alert loss!"
     except Exception as exc:

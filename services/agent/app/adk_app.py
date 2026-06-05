@@ -50,52 +50,41 @@ class IncidentResult:
 
 
 def _instruction() -> str:
-    classify = (_PROMPT_DIR / "classify.md").read_text(encoding="utf-8")
-    recommend = (_PROMPT_DIR / "recommend.md").read_text(encoding="utf-8")
+    # Tool-first phrasing: investigate by CALLING the tools, then summarize. Front-loading
+    # "respond with ONLY JSON" makes Gemini narrate `tool_code` text instead of calling the tools.
     return (
-        "You are OpsSentinel's incident reasoner. You have tools from two MCP servers: the Elastic "
-        "server (`fetch_recent_logs`, `search_runbooks`) and the Arize server "
-        "(`get_category_accuracy`, `get_calibration`, `is_novel_category`).\n\n"
-        "For each incident: (1) classify it, (2) call `fetch_recent_logs(service)` and "
-        "`search_runbooks(<query>)` to ground your analysis in retrieved runbooks, (3) call the "
-        "Arize tools for the incident's category to gather your historical accuracy, calibration "
-        "error, and novelty, (4) synthesize a remediation grounded ONLY in the retrieved "
-        "runbooks.\n\n"
-        "Then respond with ONLY a JSON object (no prose, no markdown fences) with these keys: "
-        "category, severity (P1-P4), remediation_team, confidence (0-1), root_cause, summary, "
-        "steps (array), commands (array), risk_level (low|medium|high), based_on_runbook_id, "
-        "historical_match_ids (array), category_accuracy (0-1), calibration_error (0-1), "
-        "is_novel (boolean).\n\n"
-        f"--- classification guidance ---\n{classify}\n\n"
-        f"--- recommendation guidance ---\n{recommend}"
+        "You are OpsSentinel's SRE incident reasoner. Investigate the incident by CALLING your "
+        "available tools — do not describe the calls, actually invoke them.\n\n"
+        "1. Call `fetch_recent_logs` (the service) and `search_runbooks` (a query describing the "
+        "symptom) on the Elastic server to retrieve recent logs and the closest runbook.\n"
+        "2. Call `get_category_accuracy`, `get_calibration`, and `is_novel_category` on the Arize "
+        "server for the incident's category to gather your historical performance.\n"
+        "3. Classify the incident and synthesize a remediation grounded ONLY in the retrieved "
+        "runbook (do not invent steps outside it).\n\n"
+        "After the tool results are in, give your FINAL answer as a single JSON object and nothing "
+        "else, with these keys: category, severity (P1-P4), remediation_team, confidence (0-1), "
+        "root_cause, summary, steps (array of strings), commands (array of strings), risk_level "
+        "(low|medium|high), based_on_runbook_id, historical_match_ids (array), category_accuracy "
+        "(0-1), calibration_error (0-1), is_novel (boolean)."
     )
+
+
+def _build_toolsets(config: AgentConfig) -> list[McpToolset]:
+    return [
+        McpToolset(connection_params=SseConnectionParams(url=config.mcp_elastic_url)),
+        McpToolset(connection_params=SseConnectionParams(url=config.mcp_arize_url)),
+    ]
 
 
 def build_agent(config: AgentConfig | None = None) -> LlmAgent:
     """Build the ADK agent + its two SSE MCP toolsets. Constructs offline (no key needed)."""
     config = config or load_config()
-    elastic_tools = McpToolset(connection_params=SseConnectionParams(url=config.mcp_elastic_url))
-    arize_tools = McpToolset(connection_params=SseConnectionParams(url=config.mcp_arize_url))
     return LlmAgent(
         name="opssentinel_reasoner",
         model=config.gemini_model,
         instruction=_instruction(),
-        tools=[elastic_tools, arize_tools],
+        tools=_build_toolsets(config),
     )
-
-
-_runner: Runner | None = None
-
-
-def _get_runner() -> Runner:
-    global _runner
-    if _runner is None:
-        _runner = Runner(
-            agent=build_agent(),
-            app_name=APP_NAME,
-            session_service=InMemorySessionService(),
-        )
-    return _runner
 
 
 def _incident_prompt(context: Any) -> str:
@@ -131,19 +120,44 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 
 async def _run_agent(context: Any) -> str:
-    runner = _get_runner()
-    user_id, session_id = "agent", str(uuid4())
-    await runner.session_service.create_session(
-        app_name=APP_NAME, user_id=user_id, session_id=session_id
+    # Build the agent + MCP toolsets + runner FRESH inside this event loop. The MCP SSE session is
+    # bound to the loop it is created in; reusing a module-level singleton across asyncio.run()
+    # calls (from the consumer's flush thread) fails with "Failed to create MCP session".
+    config = load_config()
+    toolsets = _build_toolsets(config)
+    agent = LlmAgent(
+        name="opssentinel_reasoner",
+        model=config.gemini_model,
+        instruction=_instruction(),
+        tools=toolsets,
     )
-    message = types.Content(role="user", parts=[types.Part(text=_incident_prompt(context))])
-    final_text = ""
-    async for event in runner.run_async(
-        user_id=user_id, session_id=session_id, new_message=message
-    ):
-        if event.is_final_response() and event.content and event.content.parts:
-            final_text = event.content.parts[0].text or ""
-    return final_text
+    runner = Runner(agent=agent, app_name=APP_NAME, session_service=InMemorySessionService())
+    user_id, session_id = "agent", str(uuid4())
+    try:
+        await runner.session_service.create_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id
+        )
+        message = types.Content(role="user", parts=[types.Part(text=_incident_prompt(context))])
+        final_text = ""
+        last_text = ""
+        async for event in runner.run_async(
+            user_id=user_id, session_id=session_id, new_message=message
+        ):
+            if not (event.content and event.content.parts):
+                continue
+            # Join ALL text parts (the final JSON may not be in parts[0]); skip function-call parts.
+            text = "".join(part.text or "" for part in event.content.parts)
+            if text.strip():
+                last_text = text
+                if event.is_final_response():
+                    final_text = text
+        return final_text or last_text
+    finally:
+        for toolset in toolsets:
+            try:
+                await toolset.close()
+            except Exception:
+                pass
 
 
 # Substrings that mark a transient Gemini error worth retrying with backoff.

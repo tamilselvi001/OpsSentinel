@@ -6,6 +6,7 @@ These return raw observability metrics; the agent (Phase 3) maps them to an auto
 from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -13,7 +14,11 @@ from starlette.routing import Mount, Route
 
 from app import store
 
-mcp = FastMCP("mcp-arize")
+# Internal-only service reached by service name over the network; disable the host allowlist.
+mcp = FastMCP(
+    "mcp-arize",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
 
 
 @mcp.tool()

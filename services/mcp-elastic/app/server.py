@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -17,7 +18,12 @@ from starlette.routing import Mount, Route
 
 from app.elastic_client import ElasticKnowledge
 
-mcp = FastMCP("mcp-elastic")
+# Disable the SDK's DNS-rebinding host-allowlist: this is an internal-only service reached over the
+# compose/cluster network by its service name (e.g. mcp-elastic:8080); the network is the boundary.
+mcp = FastMCP(
+    "mcp-elastic",
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+)
 _knowledge: ElasticKnowledge | None = None
 
 
