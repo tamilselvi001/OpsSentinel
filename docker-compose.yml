@@ -186,7 +186,7 @@ services:
       dockerfile: Dockerfile
     environment:
       NODE_ENV: production
-      OPSSENTINEL_DATA_MODE: mock
+      OPSSENTINEL_DATA_MODE: live
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-changeme.apps.googleusercontent.com}
       SESSION_SECRET: ${SESSION_SECRET:-dev-insecure-session-secret-change-me}
       DATABASE_URL: postgresql://opssentinel:opssentinel@postgres:5432/opssentinel
