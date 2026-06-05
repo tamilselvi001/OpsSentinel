@@ -1,9 +1,14 @@
+import { connection } from "next/server";
+
 import GoogleSignIn from "@/components/GoogleSignIn";
 import { getPublicOAuthClientId } from "@/lib/config";
 
 // Server component: reads the (non-secret) OAuth client id at runtime and hands it to the client
-// widget — so Cloud Run can inject it from Secret Manager without a build-time NEXT_PUBLIC value.
-export default function LoginPage() {
+// widget — so Cloud Run (or docker-compose) can inject it from Secret Manager/env without a
+// build-time NEXT_PUBLIC value. `await connection()` opts this page into dynamic rendering so the
+// env var is evaluated per-request at runtime instead of being frozen empty at `next build` time.
+export default async function LoginPage() {
+  await connection();
   const clientId = getPublicOAuthClientId();
   return (
     <main className="flex flex-1 items-center justify-center bg-zinc-50 dark:bg-black">

@@ -40,6 +40,7 @@ def test_rrf_scores_descending():
 def test_shape_runbook_matches_contract():
     source = {
         "title": "Database Connection Limit Reached",
+        "category": "Database Connection Pool",
         "root_cause": "pool exhausted",
         "resolution_steps": "restart pool",
         "commands": ["kubectl rollout restart"],
@@ -50,6 +51,7 @@ def test_shape_runbook_matches_contract():
     assert set(shaped) == {
         "id",
         "title",
+        "category",
         "root_cause",
         "resolution_steps",
         "commands",
@@ -58,4 +60,6 @@ def test_shape_runbook_matches_contract():
         "similarity_score",
     }
     assert shaped["id"] == "rb-1"
+    # the canonical category is surfaced so the agent can reuse it for the Arize accuracy lookup
+    assert shaped["category"] == "Database Connection Pool"
     assert shaped["similarity_score"] == 0.123457  # rounded to 6 dp

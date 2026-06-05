@@ -31,6 +31,7 @@ def shape_runbook(doc_id: str, source: dict[str, Any], similarity_score: float) 
     return {
         "id": doc_id,
         "title": source.get("title"),
+        "category": source.get("category"),  # lets the agent reuse the canonical category
         "root_cause": source.get("root_cause"),
         "resolution_steps": source.get("resolution_steps"),
         "commands": source.get("commands", []),

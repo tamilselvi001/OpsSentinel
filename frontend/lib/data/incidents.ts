@@ -117,10 +117,17 @@ export async function getMetrics(): Promise<ReliabilityMetrics> {
               FILTER (WHERE status = 'resolved') AS mttr_minutes,
             avg(CASE WHEN autonomy_tier = 'high' THEN 1.0 ELSE 0.0 END) AS autonomy_coverage,
             avg(CASE WHEN approval_status = 'approved' THEN 1.0 ELSE 0.0 END)
-              FILTER (WHERE approval_status IS NOT NULL) AS approval_rate
+              FILTER (WHERE approval_status IS NOT NULL) AS approval_rate,
+            -- correlation precision = the duplicate-reduction ratio: 1 - incidents/signals.
+            -- A storm of 50 signals folded into 1 incident -> 1 - 1/50 = 0.98.
+            coalesce(sum(jsonb_array_length(correlated_event_ids)), 0)::int AS total_signals
      FROM incidents`,
   );
   const t = totals.rows[0] as Record<string, unknown>;
+  const totalSignals = (t.total_signals as number) ?? 0;
+  const totalIncidents = (t.total as number) ?? 0;
+  const correlationPrecision =
+    totalSignals > 0 ? 1 - totalIncidents / totalSignals : null;
 
   let triageAccuracy: number | null = null;
   let calibrationVariance: number | null = null;
@@ -137,15 +144,17 @@ export async function getMetrics(): Promise<ReliabilityMetrics> {
   }
 
   return {
-    mttd_seconds: null, // not directly derivable from the store
+    // MTTD (first-signal → analysis) needs per-signal ingest timestamps, which the incident store
+    // does not retain; surfaced as null in live mode (shown in the demo/mock).
+    mttd_seconds: null,
     mttr_minutes: asNum(t.mttr_minutes),
     triage_accuracy: triageAccuracy,
-    correlation_precision: null,
+    correlation_precision: correlationPrecision,
     autonomous_approval_rate: asNum(t.approval_rate),
     calibration_variance: calibrationVariance,
     autonomy_coverage: asNum(t.autonomy_coverage),
     open_incidents: (t.open as number) ?? 0,
-    total_incidents: (t.total as number) ?? 0,
+    total_incidents: totalIncidents,
   };
 }
 

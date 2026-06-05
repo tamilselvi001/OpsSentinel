@@ -24,10 +24,10 @@ resource "google_compute_backend_service" "default" {
   enable_cdn            = true
 
   cdn_policy {
-    cache_mode = "CACHE_ALL_STATIC" # pull/origin strategy: cache static assets, honor TTL headers
-    client_ttl  = var.cdn_default_ttl_seconds
-    default_ttl = var.cdn_default_ttl_seconds
-    max_ttl     = 86400
+    cache_mode       = "CACHE_ALL_STATIC" # pull/origin strategy: cache static assets, honor TTL headers
+    client_ttl       = var.cdn_default_ttl_seconds
+    default_ttl      = var.cdn_default_ttl_seconds
+    max_ttl          = 86400
     negative_caching = true
 
     cache_key_policy {

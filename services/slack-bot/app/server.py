@@ -85,10 +85,19 @@ async def notify(request: Request) -> Response:
     message = build_message(brief, dashboard_url=dashboard_url)
 
     from slack_sdk import WebClient
+    from slack_sdk.errors import SlackApiError
 
-    WebClient(token=get_secret("slack-bot-token")).chat_postMessage(
-        channel=SLACK_CHANNEL, text=message["text"], blocks=message["blocks"]
-    )
+    try:
+        WebClient(token=get_secret("slack-bot-token")).chat_postMessage(
+            channel=SLACK_CHANNEL, text=message["text"], blocks=message["blocks"]
+        )
+    except SlackApiError as exc:
+        # e.g. missing_scope (add chat:write to the bot) or not_in_channel (invite the bot).
+        error = str(exc.response.get("error") if exc.response else exc)
+        logger.warning(
+            "slack post failed", extra={"incident_id": incident_id, "slack_error": error}
+        )
+        return JSONResponse({"ok": False, "error": error}, status_code=502)
     logger.info("posted brief to slack", extra={"incident_id": incident_id})
     return JSONResponse({"ok": True})
 
