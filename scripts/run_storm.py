@@ -35,15 +35,20 @@ def _reconcile(expected_min: int) -> None:
     try:
         with get_engine().connect() as conn:
             window = "created_at > now() - interval '10 minutes'"
+            # The agent folds the storm into ONE incident; the raw event ids it absorbed are stored
+            # on the incident's correlated_event_ids (jsonb). Reconcile against that for zero-loss.
             incidents = conn.execute(
                 text(f"SELECT count(*) FROM incidents WHERE {window}")
             ).scalar_one()
-            events = conn.execute(
-                text(f"SELECT count(*) FROM incident_events WHERE {window}")
+            max_events = conn.execute(
+                text(
+                    "SELECT coalesce(max(jsonb_array_length(correlated_event_ids)), 0) "
+                    f"FROM incidents WHERE {window}"
+                )
             ).scalar_one()
-        print(f"incidents (last 10m): {incidents}  |  correlated events: {events}")
+        print(f"incidents (last 10m): {incidents}  |  events folded into one incident: {max_events}")
         assert incidents >= 1, "expected at least one incident from the storm"
-        assert events >= expected_min, "fewer correlated events than published — alert loss!"
+        assert max_events >= expected_min, "fewer folded events than published — alert loss!"
     except Exception as exc:
         print(f"(DB reconciliation unavailable: {exc})")
 

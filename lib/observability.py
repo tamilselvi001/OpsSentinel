@@ -34,6 +34,7 @@ def configure_tracing(service_name: str = "opssentinel-agent"):
 
     # Lazy imports — only the agent image carries these.
     from openinference.instrumentation.google_adk import GoogleADKInstrumentor
+    from opentelemetry import trace
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
@@ -44,6 +45,9 @@ def configure_tracing(service_name: str = "opssentinel-agent"):
     exporter = OTLPSpanExporter(endpoint=f"{endpoint.rstrip('/')}/v1/traces", headers=headers)
     provider.add_span_processor(SimpleSpanProcessor(exporter))
 
+    # Set the GLOBAL provider so manually-created spans (the agent's "incident" span) also record a
+    # real trace id — not just the ADK auto-instrumented spans.
+    trace.set_tracer_provider(provider)
     GoogleADKInstrumentor().instrument(tracer_provider=provider)
     logger.info("tracing configured", extra={"collector": endpoint, "service_name": service_name})
     return provider

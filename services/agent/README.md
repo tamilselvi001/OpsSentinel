@@ -4,10 +4,16 @@ The cognitive brain. A **single generalized orchestrator** (no sub-agents) that 
 alerts from `opssentinel-alerts-sub`, runs the **ADK 2.0 graph** (Section 4 of the Phase-3 prompt),
 and produces a fully-populated incident + execution brief for human approval.
 
-> **Build status:** Phase 3 complete (Tasks 6.1–6.12). Deterministic logic (correlation, policy,
-> autonomy, brief, graph routing, mocked execution) is unit-tested green; Gemini reasoning, the MCP
-> SSE clients, the OTel/Phoenix tracing, and the Cloud Run deploy are authored (run where the live
-> Gemini key / MCP servers / Docker / Terraform exist).
+> **Build status (Phase 6, Task 4 — migrated to real Google ADK):** the agent is now built on
+> **Google ADK** — an `LlmAgent` (Gemini 2.0 Flash) that is the MCP client via two `McpToolset`
+> instances over **SSE** (Elastic + Arize), executed by the ADK `Runner`, instrumented to Phoenix via
+> `GoogleADKInstrumentor` (see [`app/adk_app.py`](app/adk_app.py)). The **deterministic governance**
+> (autonomy tier + Policy Engine + brief, in [`app/governance.py`](app/governance.py)) runs off-LLM
+> after — the LLM cannot bypass the policy gate. The deterministic logic is unit-tested green
+> (`test_governance`, `test_policy`, `test_autonomy`, `test_brief`, `test_correlation`,
+> `test_executor`); the ADK agent's **live** run (Gemini + MCP tool calls + Phoenix spans) is
+> validated on the live stack (Phase-6 Task 3/5, needs Docker + the Gemini key). The hand-rolled
+> orchestrator/MCP/reasoning code has been removed.
 
 ## Graph (deterministic edges; LLM only where marked)
 

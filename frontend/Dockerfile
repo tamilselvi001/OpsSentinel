@@ -7,7 +7,9 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# `npm install` (not `npm ci`) so Linux-only optional deps (e.g. @emnapi/*) resolve correctly —
+# the committed lockfile is generated on Windows and omits them, which breaks `npm ci` on Alpine.
+RUN npm install --no-audit --no-fund
 
 # ── build (standalone output traced by the compiler) ─────────────────────────
 FROM node:22-alpine AS builder

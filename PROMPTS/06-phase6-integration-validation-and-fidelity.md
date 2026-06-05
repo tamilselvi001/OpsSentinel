@@ -154,35 +154,36 @@ outcome is logged. Capture log excerpts. **STOP for review.**
 
 ---
 
-## TASK 4 — Resolve the Google ADK deviation  *(needs a human decision first)*
+## TASK 4 — Migrate the agent to real Google ADK  *(DECISION MADE: Option A)*
 
 **Objective:** The spec mandates **Google ADK (Graph Workflows)** with **`McpToolset`** and the
 `openinference-instrumentation-google-adk` tracer. The current agent is a hand-rolled orchestrator
 (`services/agent/app/graph.py`) using `google-genai` directly and the raw `mcp` SSE client — so ADK
 is listed in requirements but **not actually used**, and the ADK auto-tracer captures nothing.
 
-**Ask the human to choose ONE option, then implement it:**
+**The human has chosen Option A — use real Google ADK.** Implement it exactly per the detailed,
+API-verified plan in **`docs/ADK-MIGRATION.md`** (it was written against the installed
+`google-adk` 2.2.0 and gives the real imports, the node→ADK mapping, the file plan, the tracing
+wiring, and the gotchas). In summary:
+- Build the agent with `LlmAgent` (Gemini 2.0 Flash) + two `McpToolset(SseConnectionParams(url=...))`
+  clients for the Phase-2 Elastic and Arize MCP servers, composed in a `SequentialAgent`, executed
+  via `Runner` + `InMemorySessionService`.
+- Keep `correlation`, `autonomy`, `policy`, `brief`, `persistence`, `executor`, `mock_infra` as the
+  deterministic nodes — **the Policy Engine and autonomy decision must stay deterministic; the LLM
+  cannot bypass them**. Remediation stays mocked.
+- Apply `GoogleADKInstrumentor().instrument(...)` so every tool call / model call / token becomes a
+  Phoenix span (this is what makes Exit Criterion 3 truly achievable).
+- Remove the now-dead hand-rolled MCP/LLM code (`app/mcp_clients.py`, `app/reasoning.py`, the LLM
+  parts of `app/graph.py`) so ADK is genuinely the framework; bump `google-adk>=2.2` in
+  `services/agent/requirements.txt`.
 
-- **Option A (highest spec fidelity, more work):** Adopt real Google ADK. Build the agent with ADK
-  (e.g. an `LlmAgent` driving Gemini, ADK `McpToolset` clients pointed at the Phase-2 Elastic/Arize
-  MCP servers over SSE, and an ADK graph/sequential workflow expressing nodes 1–9). Keep the
-  existing deterministic modules (`correlation`, `policy`, `autonomy`, `brief`, `executor`) as the
-  graph's deterministic nodes. Apply `lib/observability.configure_tracing()` so ADK emits
-  OpenInference spans to Phoenix automatically.
+**Steps:** implement per `docs/ADK-MIGRATION.md`; keep the deterministic unit tests green; port
+`tests/test_graph.py` to the ADK path using a fake/echo model so it runs without a live Gemini key;
+`ruff check . && pytest`; `docker compose build agent`; bring the agent up and re-run Task 3.
 
-- **Option B (keep the custom orchestrator, document + instrument manually):** Keep `graph.py`,
-  but (1) remove `google-adk` from the agent requirements OR clearly document in
-  `services/agent/README.md` that ADK is intentionally not used and why; and (2) add explicit
-  **OpenTelemetry spans** around every Gemini call and every MCP tool call (wrap them in
-  `tracer.start_as_current_span(...)` with attributes for tool name, latency, and token counts) so
-  EC3's "every tool call / token as a span" is actually achievable without ADK.
-
-**Steps:** implement the chosen option; re-run `ruff check . && pytest` and `docker compose build
-agent`; bring the agent back up and re-run Task 3 to confirm no regression.
-
-**Acceptance:** the chosen option is implemented; the agent still passes Tasks 1–3; if Option A, ADK
-spans appear in Phoenix; if Option B, manual spans appear and the deviation is documented. **STOP for
-review.**
+**Acceptance:** the agent is built on ADK (`LlmAgent` + `McpToolset` + `SequentialAgent` + `Runner`);
+deterministic governance unchanged and still unit-tested; a live run shows real ADK/OpenInference
+spans in Phoenix; the dead hand-rolled code is gone. **STOP for review.**
 
 ---
 

@@ -1,21 +1,15 @@
-"""Compose the concrete graph dependencies + apply OpenInference tracing (Tasks 6.10/6.11 runtime).
+"""Runtime wiring for the ADK agent: OpenInference tracing + the store/notifier the graph needs.
 
-Only the running agent imports this (it pulls in Gemini / MCP / DB / OTel); the unit tests build
-``GraphDeps`` from fakes instead.
+Only the running agent imports this; the unit tests build the pieces directly.
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
 import urllib.request
-from collections.abc import Iterator
 
 from app.config import AgentConfig, load_config
-from app.graph import GraphDeps
 from app.incident_store import DbIncidentStore
-from app.mcp_clients import ArizeMcpEvaluationClient, ElasticMcpKnowledgeClient
-from app.reasoning import GeminiReasoner
 from lib.logging import get_logger
 from lib.observability import configure_tracing
 
@@ -36,34 +30,22 @@ class SlackNotifier:
         urllib.request.urlopen(request, timeout=10).close()  # noqa: S310 (internal URL)
 
 
-class OtelTracer:
-    """Wraps a run in an OpenTelemetry span and yields its trace id (persisted on the incident)."""
-
-    @contextlib.contextmanager
-    def run_span(self, name: str) -> Iterator[str]:
-        from opentelemetry import trace
-
-        tracer = trace.get_tracer("opssentinel.agent")
-        with tracer.start_as_current_span(name) as span:
-            yield format(span.get_span_context().trace_id, "032x")
+def build_store() -> DbIncidentStore:
+    return DbIncidentStore()
 
 
-def build_deps(config: AgentConfig | None = None) -> GraphDeps:
+def build_notifier(config: AgentConfig | None = None) -> SlackNotifier:
     config = config or load_config()
-    return GraphDeps(
-        reasoner=GeminiReasoner(model=config.gemini_model),
-        knowledge=ElasticMcpKnowledgeClient(config.mcp_elastic_url),
-        evaluation=ArizeMcpEvaluationClient(config.mcp_arize_url),
-        store=DbIncidentStore(),
-        tracer=OtelTracer(),
-        notifier=SlackNotifier(config.slack_notify_url),
-    )
+    return SlackNotifier(config.slack_notify_url)
 
 
 def enable_tracing() -> None:
-    """Apply the Phase-2 OpenInference helper; never fatal if the collector is unreachable."""
+    """Apply the OpenInference ADK instrumentor → Phoenix; never fatal if the collector is down.
+
+    Because the agent now actually runs on ADK, this auto-captures every model/tool/token as a span.
+    """
     try:
         configure_tracing(service_name="opssentinel-agent")
-        logger.info("openinference tracing enabled")
+        logger.info("openinference ADK tracing enabled")
     except Exception as exc:
         logger.warning("tracing not configured; continuing", extra={"error": str(exc)})

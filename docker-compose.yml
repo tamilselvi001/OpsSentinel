@@ -53,8 +53,9 @@ services:
         condition: service_healthy
 
   # Elasticsearch — semantic memory + raw log intake (Phase 2).
+  # Pulled from Docker Hub (docker.elastic.co is blocked on some networks).
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    image: elasticsearch:8.13.4
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
@@ -131,11 +132,18 @@ services:
       OPSSENTINEL_USE_SECRET_MANAGER: "false"
       OPSSENTINEL_ALERTS_SUB: opssentinel-alerts-sub
       OPSSENTINEL_ACTIONS_TOPIC: opssentinel-actions
+      CORRELATION_WINDOW_SECONDS: "10" # short window for local demo/validation (prod: 120)
       DATABASE_URL: postgresql+psycopg://opssentinel:opssentinel@postgres:5432/opssentinel
       MCP_ELASTIC_URL: http://mcp-elastic:8080/sse
       MCP_ARIZE_URL: http://mcp-arize:8081/sse
       PHOENIX_COLLECTOR_ENDPOINT: http://phoenix:6006
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # ADK / google-genai read GOOGLE_API_KEY and the Vertex flag (not GEMINI_API_KEY).
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-${GEMINI_API_KEY:-}}
+      GOOGLE_GENAI_USE_VERTEXAI: "FALSE"
+      # gemini-2.0-flash free tier was retired (limit:0); 2.5-flash is the current free flash model.
+      # Set GEMINI_MODEL=gemini-2.0-flash once billing/paid quota is enabled to match the spec exactly.
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       SLACK_NOTIFY_URL: http://slack-bot:8080/notify
     depends_on:
       pubsub-emulator:

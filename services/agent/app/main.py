@@ -1,20 +1,20 @@
-"""Agent entrypoint: enable tracing, start the execution consumer, run alert intake → the graph.
+"""Agent entrypoint: tracing + health + execution consumer, then alert intake → the ADK agent.
 
-The alert consumer (node 1/2) runs in the main thread; the approval-execution consumer (node 9)
-runs in a daemon thread. A correlated incident is driven through the reasoning graph to
-``awaiting_approval``; an approval published to ``opssentinel-actions`` drives the execution path.
+The alert consumer (node 1/2) runs in the main thread and feeds each correlated incident to the
+ADK agent (:func:`app.adk_app.run_incident`); the approval-execution consumer (node 9) runs in a
+daemon thread.
 """
 
 from __future__ import annotations
 
 import threading
 
+from app.adk_app import run_incident
 from app.consumer import run
 from app.correlation import IncidentContext
 from app.execution_consumer import run as run_execution_consumer
-from app.graph import run_graph
 from app.health import start_health_server
-from app.runtime import build_deps, enable_tracing
+from app.runtime import build_notifier, build_store, enable_tracing
 from lib.logging import get_logger
 
 logger = get_logger("opssentinel.agent")
@@ -30,12 +30,13 @@ def _start_execution_consumer() -> None:
 def main() -> None:
     start_health_server()  # Cloud Run liveness (the agent is otherwise a background pull worker)
     enable_tracing()
-    deps = build_deps()
+    store = build_store()
+    notifier = build_notifier()
     threading.Thread(target=_start_execution_consumer, daemon=True).start()
 
     def on_incident(ctx: IncidentContext) -> None:
         try:
-            result = run_graph(ctx, deps)
+            result = run_incident(ctx, store=store, notifier=notifier)
             logger.info(
                 "incident processed",
                 extra={
@@ -45,7 +46,7 @@ def main() -> None:
                 },
             )
         except Exception:
-            logger.exception("graph failed", extra={"correlation_key": ctx.correlation_key})
+            logger.exception("agent failed", extra={"correlation_key": ctx.correlation_key})
 
     run(on_incident=on_incident)
 

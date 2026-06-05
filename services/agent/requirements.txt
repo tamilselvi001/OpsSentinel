@@ -1,7 +1,7 @@
-# Agent (ADK orchestrator) runtime deps. Some are used by later Phase-3 checkpoints
-# (graph/Gemini/MCP/tracing); pinned best-effort and documented in the service README.
-google-adk>=0.3
-google-genai>=0.3
+# Agent runtime deps. The agent is built on Google ADK (LlmAgent + McpToolset over SSE), run by the
+# ADK Runner, instrumented to Phoenix via openinference-instrumentation-google-adk.
+google-adk>=2.2,<3
+google-genai>=1.0
 mcp>=1.2.0
 google-cloud-pubsub>=2.21
 google-cloud-secret-manager>=2.20
